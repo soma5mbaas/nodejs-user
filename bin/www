@@ -1,0 +1,47 @@
+#!/usr/bin/env node
+var debug = require('debug')('service');
+var cluster = require('cluster');
+
+var Logger  = require('haru-nodejs-util').Logger;
+
+// Time Zone
+process.env.TZ = 'Asia/Seoul';
+
+// Global Config
+global.config = require('../config');
+
+// Global Error Code
+global.errorCode = require('haru-nodejs-util').errorCode;
+
+// set logger
+global.log  = new Logger( __dirname +'/../logs/debug.log');
+global.loge = new Logger( __dirname +'/../logs/exception.log');
+
+// // Exception
+// process.on('uncaughtException', function(error) {
+// 	loge.error(error);
+// });
+
+if( cluster.isMaster ) {
+	var processCount = require('os').cpus().length - 2;
+	if( processCount < 1 ) {
+		processCount = 1;
+	}
+
+	cluster.on('exit',function(worker) {
+		log.info('[%d] worker is exit', worker.process.pid);
+	});
+	
+	for( var i = 0; i < processCount; i++ ) {
+		var worker = cluster.fork();
+	}
+
+} else {
+	var app = require('../app');
+
+	app.set('port', process.env.PORT || config.port);
+	var server = app.listen(app.get('port'), function() {
+		log.info('[%d] Express server listening on port %d', process.pid, server.address().port);
+	});
+
+}
