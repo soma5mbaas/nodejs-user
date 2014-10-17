@@ -1,5 +1,7 @@
 var redis = require('redis');
 var async = require('async');
+var _ = require('underscore');
+
 
 var keys = require('haru-nodejs-util').keys;
 
@@ -57,6 +59,24 @@ Redis.prototype.hget = function(key, field, callback) {
 	conn.hget(key, field, callback);
 };
 
+Redis.prototype.hset = function(key, field, value, callback) {
+    var self = this;
+
+    var conn = self.getConnection('write');
+
+    conn.select(0);
+    conn.hset(key, field, value, callback);
+};
+
+Redis.prototype.sadd = function(key, value, callback) {
+    var self = this;
+
+    var conn = self.getConnection('write');
+
+    conn.select(0);
+    conn.sadd(key, value, callback);
+};
+
 Redis.prototype.hvals = function( key, callback ) {
 	var self = this;
 
@@ -102,14 +122,24 @@ Redis.prototype.smembers = function( key, callback ) {
 	conn.smembers(key, callback);	
 };
 
-Redis.prototype.hmset = function(key, feilds, callback) {
+Redis.prototype.hmset = function(key, fields, callback) {
     var self = this;
     var conn = self.getConnection('write');
 
     conn.select(0);
 
+    callback = callback || function(error, results) {};
 
-    conn.hmset( key, feilds );
+    conn.hmset( key, fields , callback );
+};
+
+Redis.prototype.hmsetnx = function(key, fields, callback) {
+    var self = this;
+    var conn = self.getConnection('write');
+
+    conn.select(0);
+
+    conn.hmsetnx( key, fields );
 };
 
 Redis.prototype.getConnection = function(method) {
@@ -162,6 +192,7 @@ Redis.prototype.expire = function(key, seconds, callback) {
 
     conn.expire(key, seconds, callback);
 };
+
 function _addEventListener(conn, config, type){
     conn.on( 'connect', function() {
         log.info('[%d] %s:%d Redis %s Connected', process.pid, config.host, config.port, type);
@@ -172,4 +203,26 @@ function _addEventListener(conn, config, type){
     });
 
     return conn;
+};
+
+function _toArray(){
+    var array = [];
+
+    _.values(arguments).forEach(function(data) {
+        if(_.isObject(data)) {
+            _.keys(data).forEach(function(key) {
+               array.push(key);
+               array.push(data[key]);
+            });
+        }
+        else if(_.isArray(data)) {
+            array.concat(data);
+        }
+        else {
+            array.push(data);
+        }
+    });
+
+
+    return array;
 };

@@ -18,13 +18,14 @@ exports.signup = function(req, res) {
     input.userinfo._id = uuid();
     input.userinfo.createAt = input.userinfo.updateAt = input.timestamp;
 
-    schemaHandler.createSchema(input.applicationId, input.userinfo);
+    schemaHandler.createUserSchema(input.applicationId, input.userinfo);
     userHandler.signup(input, function(error, results) {
         if(error) { return sendError(res, error); }
         var output = {};
 
         output.createAt = output.updateAt = input.timestamp;
         output.sessionToken = results;
+        output._id = input.userinfo._id;
 
         res.json(output);
     });
@@ -57,3 +58,14 @@ exports.validtoken = function(req, res) {
     });
 };
 
+exports.logout = function(req, res) {
+
+};
+
+exports.logoutall = function(req, res) {
+
+};
+
+exports.logoutother = function(req, res) {
+
+};

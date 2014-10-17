@@ -9,6 +9,7 @@ var _ = require('underscore');
 
 
 var UsersClass = 'Users';
+var InstallationClass = 'Installations'
 
 var mongodb = require('../connectors').mongodb;
 var redisPublic = require('../connectors').redisPublic;
@@ -20,7 +21,11 @@ var TTL = require('../config').sessionToken.TTL;
 
 
 exports.signup = function(input, callback) {
-    var userCollectionKey = keys.collectionKey(UsersClass, input.applicationId);
+    var deviceToken = input.userinfo.deviceToken;
+    var userId = input.userinfo._id;
+    var applicationId = input.applicationId;
+
+    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
 
     async.series([
         function isExists(callback) {
@@ -38,12 +43,12 @@ exports.signup = function(input, callback) {
                     });
                 },
                 function saveUserinfoToRedis(callback) {
-                    var userHasMapKey = keys.entityDetail(UsersClass, input.userinfo._id, input.applicationId);
-                    var keyset = keys.entityKey(UsersClass, input.applicationId);
+                    var userHasMapKey = keys.entityDetail(UsersClass, userId, applicationId);
+                    var keyset = keys.entityKey(UsersClass, applicationId);
 
                     redisService.multi()
                                 .hmset(userHasMapKey, input.userinfo)
-                                .zadd(keyset, input.timestamp, input.userinfo._id)
+                                .zadd(keyset, input.timestamp, userId)
                                 .exec(function(error, replies) {
                                     callback(error, replies);
                                 });
@@ -51,8 +56,8 @@ exports.signup = function(input, callback) {
                 function registSessionToken(callback){
                     var token = uuid();
 
-                    var tokenIdKey = keys.tokenIdKey(input.applicationId, token);
-                    var idTokenKey = keys.idTokenKey(input.applicationId, input.userinfo._id);
+                    var tokenIdKey = keys.tokenIdKey(applicationId, token);
+                    var idTokenKey = keys.idTokenKey(applicationId, userId);
 
                     redisPublic.multi()
                                 .sadd(idTokenKey, token)
@@ -62,6 +67,32 @@ exports.signup = function(input, callback) {
                                 .exec(function(error, results) {
                                     callback(error, token);
                                 });
+                },
+                function addClasse(callback) {
+                    var classesKey = keys.classesKey(input.applicationId);
+
+                    redisPublic.sadd(classesKey, UsersClass, callback);
+                },
+                function updateInstallationUserId(callback) {
+                    var installationCollection = keys.collectionKey(InstallationClass, applicationId);
+                    var installationHash = keys.installationKey(applicationId);
+
+                    async.series([
+                        function updateMongo(callback){
+                            mongodb.update(installationCollection,
+                                {deviceToken: deviceToken}, {$set: {userId: userId}},
+                                callback );
+                        },
+                        function updateRedis(callback) {
+                            redisService.hget(installationHash, deviceToken, function(error, deviceId) {
+                                // TODO deviceToken error handling
+                               var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
+                               redisService.hset(installationKey, 'userId', userId, callback);
+                            });
+                        }
+                    ], function done(error, results) {
+                        callback(error, results);
+                    });
                 }
             ], function done(error, results) {
                 callback(error, results[2]);    // return Session-Token

@@ -53,6 +53,17 @@ MongoDB.prototype.find = function(collection, condition, callback) {
 	});
 };
 
+MongoDB.prototype.update = function(collection, condition, value, callback) {
+    var self = this;
+
+    process.nextTick(function() {
+        var coll = self.getConnection().collection( collection );
+        condition = condition || {};
+
+        coll.update(condition, value, callback);
+    });
+};
+
 MongoDB.prototype.findOne = function(collection, condition, callback) {
 	var self = this;
 	
