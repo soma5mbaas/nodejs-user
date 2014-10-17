@@ -14,7 +14,8 @@
     "hiredis": "^0.1.17",
     "mongodb": "^1.4.12",
     "redis": "^0.12.1",
-    "underscore": "^1.7.0"
+    "underscore": "^1.7.0",
+    "uuid": "^2.0.1"
   },
   "main": "app.js",
   "author": "",
