@@ -39,6 +39,8 @@ exports.login = function(req, res) {
         password: req.query.password
     };
 
+    input.deviceToken = req.query.deviceToken;
+
     userHandler.login(input, function(error, result) {
         if(error) { return sendError(res, error); }
 

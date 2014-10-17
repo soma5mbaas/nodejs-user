@@ -104,7 +104,9 @@ exports.signup = function(input, callback) {
 };
 
 exports.login = function(input, callback) {
-    var userCollectionKey = keys.collectionKey(UsersClass, input.applicationId);
+    var applicationId = input.applicationId;
+    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+    var deviceToken = input.deviceToken;
 
     async.waterfall([
         function getUserInfo(callback) {
@@ -112,6 +114,30 @@ exports.login = function(input, callback) {
                 if( results.length < 1 ) { return callback (errorCode.ACCOUNT_ALREADY_LINKED, results) }
                 callback (error, results[0]);
             });
+        },
+        function updateInstallationUserId(userInfo, callback) {
+            if( deviceToken ) {
+                var installationCollection = keys.collectionKey(InstallationClass, applicationId);
+                var installationHash = keys.installationKey(applicationId);
+
+                async.series([
+                    function updateMongo(callback) {
+                        mongodb.update(installationCollection, {deviceToken: deviceToken}, {$set: {userId: userInfo._id}}, callback);
+                    },
+                    function updateRedis(callback) {
+                        redisService.hget(installationHash, deviceToken, function (error, deviceId) {
+                            // TODO deviceToken error handling
+                            var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
+                            redisService.hset(installationKey, 'userId', userInfo._id, callback);
+                        });
+                    }
+                ], function done(error, results) {
+                    callback(error, userInfo);
+                });
+            }
+            else {
+                callback(null, userInfo);
+            }
         },
         function registSessionToken(userInfo, callback){
             var token = uuid();
