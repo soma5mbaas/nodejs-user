@@ -193,6 +193,28 @@ Redis.prototype.expire = function(key, seconds, callback) {
     conn.expire(key, seconds, callback);
 };
 
+Redis.prototype.del = function(key, callback) {
+    var self = this;
+    var conn = self.getConnection('write');
+
+    conn.select(0);
+
+    conn.del(key, callback);
+};
+
+Redis.prototype.srem = function(key, members, callback) {
+    var self = this;
+    var conn = self.getConnection('write');
+
+    conn.select(0);
+
+    if( !_.isArray(members) ) {
+        members = [members];
+    }
+
+    conn.srem(key, members, callback);
+};
+
 function _addEventListener(conn, config, type){
     conn.on( 'connect', function() {
         log.info('[%d] %s:%d Redis %s Connected', process.pid, config.host, config.port, type);
