@@ -61,13 +61,46 @@ exports.validtoken = function(req, res) {
 };
 
 exports.logout = function(req, res) {
+    var input = getHeader(req);
 
+    // logout 옵션
+    input.type = 'me';
+
+    if( !input.sessionToken ) { return sendError(res, errorCode.SESSION_MISSING); }
+
+    userHandler.logout(input, function(error, result) {
+        if( error ) { return sendError(res, error); }
+
+        res.json({success: true});
+    });
 };
 
-exports.logoutall = function(req, res) {
+exports.logoutAll = function(req, res) {
+    var input = getHeader(req);
 
+    // logout 옵션
+    input.type = 'all';
+
+    if( !input.sessionToken ) { return sendError(res, errorCode.SESSION_MISSING); }
+
+    userHandler.logout(input, function(error, result) {
+        if( error ) { return sendError(res, error); }
+
+        res.json({success: true});
+    });
 };
 
-exports.logoutother = function(req, res) {
+exports.logoutOther = function(req, res) {
+    var input = getHeader(req);
+
+    // logout 옵션
+    input.type = 'other';
+    if( !input.sessionToken ) { return sendError(res, errorCode.SESSION_MISSING); }
+
+    userHandler.logout(input, function(error, result) {
+        if( error ) { return sendError(res, error); }
+
+        res.json({success: true});
+    });
 
 };

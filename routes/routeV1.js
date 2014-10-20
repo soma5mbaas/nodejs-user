@@ -10,8 +10,8 @@ router.get('/login', user.login);
 router.get('/validtoken', user.validtoken);
 
 router.get('/logout/me', user.logout);
-router.get('/logout/other', user.logoutother);
-router.get('/logout/all', user.logoutall);
+router.get('/logout/other', user.logoutOther);
+router.get('/logout/all', user.logoutAll);
 
 // Installation
 router.post('/installation', installation.create);

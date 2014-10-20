@@ -188,3 +188,44 @@ exports.validSessionToken = function(input, callback) {
         callback(error, result);
     });
 };
+
+exports.logout = function(input, callback) {
+    var applicationId = input.applicationId;
+    async.waterfall([
+        function selectId(callback) {
+            redisPublic.hget(keys.tokenIdKey(applicationId, input.sessionToken), '_id', function (error, id) {
+                if( id < 1 ) { callback(errorCode.INVALID_LINKED_SESSION, id); } // session check
+
+                callback(error, id)
+            });
+        },
+        function selectTokens(id, callback) {
+            var type = input.type;
+
+            if(type === 'me') {
+                callback(null, id, [input.sessionToken]);
+            } else if(type === 'other') {
+                redisPublic.smembers(keys.idTokenKey(applicationId, id), function (error, results) {
+                    callback(error, id, _.without(results, input.sessionToken));
+                });
+            } else if(type === 'all') {
+                redisPublic.smembers(keys.idTokenKey(applicationId, id), function(error, results) {
+                    callback(error, id, results)
+                });
+            }else {
+                return callback(null, null, []);
+            }
+        },
+        function expireTokens(id, tokens, callback) {
+            var multi = redisPublic.multi();
+
+            for( var i = 0; i < tokens.length; i++ ) {
+                multi.del( keys.tokenIdKey(applicationId, tokens[i]) );
+            }
+            multi.srem(keys.idTokenKey(applicationId, id), tokens);
+            multi.exec(callback);
+        }
+    ], function done(error, results) {
+        callback(error, results);
+    });
+};
