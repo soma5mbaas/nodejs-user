@@ -16,14 +16,14 @@ exports.signup = function(req, res) {
 
     input.userinfo = req.body;
     input.userinfo._id = uuid();
-    input.userinfo.createAt = input.userinfo.updateAt = input.timestamp;
+    input.userinfo.createdAt = input.userinfo.updatedAt = input.timestamp;
 
     schemaHandler.createUserSchema(input.applicationId, input.userinfo);
     userHandler.signup(input, function(error, results) {
         if(error) { return sendError(res, error); }
         var output = {};
 
-        output.createAt = output.updateAt = input.timestamp;
+        output.createdAt = output.updatedAt = input.timestamp;
         output.sessionToken = results;
         output._id = input.userinfo._id;
 

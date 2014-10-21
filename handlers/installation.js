@@ -41,7 +41,7 @@ exports.createInstallation = function(input, callback) {
                     redisService.multi()
                                 .hmset(installationKey, input.installation)
                                 .hset(installationHash, input.installation.deviceToken, input.installation._id)
-                                .zadd(entityKey, input.installation.updateAt, input.installation._id)
+                                .zadd(entityKey, input.installation.updatedAt, input.installation._id)
                                 .exec(callback);
                 }
             ], function done(error, results) {
@@ -70,7 +70,7 @@ exports.updateInstallation = function(input, callback) {
         function updateRedis(callback) {
             redisService.multi()
                         .hmset(installationKey, input.installation)
-                        .zadd(entityKey, input.installation.updateAt, input._id)
+                        .zadd(entityKey, input.installation.updatedAt, input._id)
                         .exec(callback);
 
         },

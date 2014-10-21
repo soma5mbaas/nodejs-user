@@ -13,7 +13,7 @@ exports.create = function (req, res) {
     input.installation = req.body;
 
     input.installation._id = input._id = uuid();
-    input.installation.createAt = input.installation.updateAt = input.timestamp;
+    input.installation.createdAt = input.installation.updatedAt = input.timestamp;
 
     handler.createInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
@@ -21,8 +21,8 @@ exports.create = function (req, res) {
 
         res.json({
             _id: installation._id,
-            createAt: installation.createAt,
-            updateAt: installation.updateAt
+            createdAt: installation.createdAt,
+            updatedAt: installation.updatedAt
         });
     });
 };
@@ -33,7 +33,7 @@ exports.update = function(req, res) {
 
     // Installation Entity
     input.installation = req.body;
-    input.installation.updateAt = input.timestamp;
+    input.installation.updatedAt = input.timestamp;
 
     handler.updateInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
@@ -41,8 +41,8 @@ exports.update = function(req, res) {
 
         res.json({
             _id: installation._id,
-            createAt: installation.createAt,
-            updateAt: installation.updateAt
+            createdAt: installation.createdAt,
+            updatedAt: installation.updatedAt
         });
     });
 };
