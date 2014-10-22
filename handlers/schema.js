@@ -14,25 +14,32 @@ exports.createUserSchema = function(applicationId, user, callback) {
     var schemaKey = keys.schemaKey(applicationId, UsersClass);
     var schema = exportSchemaToJson( user, UserSchema );
 
-    redisPublic.hmset(schemaKey, schema);
+    redisService.hmset(schemaKey, schema);
 };
 
 exports.updateUserSchema = function(applicationId, user, callback) {
     var schemaKey = keys.schemaKey(applicationId, UsersClass);
 
-    redisPublic.hmsetnx(schemaKey, user);
+    redisService.hmsetnx(schemaKey, user);
 };
 
 exports.createInstallationSchema = function(applicationId, installation, callbck) {
     var schemaKey = keys.schemaKey(applicationId, InstallationClass);
     var schema = exportSchemaToJson( installation, InstallationSchema );
 
-    redisPublic.hmset(schemaKey, schema);
+    redisService.hmset(schemaKey, schema);
+};
+
+exports.updateInstallationSchema = function(applicationId, installation, callbck) {
+    var schemaKey = keys.schemaKey(applicationId, InstallationClass);
+    var schema = exportSchemaToJson( installation, InstallationSchema );
+
+    redisService.hmsetnx(schemaKey, schema);
 };
 
 
 exports.retrieveSchema = function(input, callback) {
-    redisPublic.hgetall( key, function(error, results) {
+    redisService.hgetall( key, function(error, results) {
 		if( error ) {}
 
 		callback(error, results);

@@ -3,6 +3,7 @@ var getHeader = util.common.getHeader;
 var sendError = util.common.sendError;
 
 var handler = require('../handlers/installation');
+var schema = require('../handlers/schema');
 
 var uuid = require('uuid');
 
@@ -18,6 +19,8 @@ exports.create = function (req, res) {
     handler.createInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
         if(installation == null) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+        schema.createInstallationSchema(input.applicationId, installation);
 
         res.json({
             _id: installation._id,
@@ -38,6 +41,8 @@ exports.update = function(req, res) {
     handler.updateInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
         if(installation == null) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+        schema.updateInstallationSchema(input.applicationId, installation);
 
         res.json({
             _id: installation._id,
