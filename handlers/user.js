@@ -111,7 +111,7 @@ exports.login = function(input, callback) {
     async.waterfall([
         function getUserInfo(callback) {
             mongodb.find( userCollectionKey, input.userinfo, function(error, results) {
-                if( results.length < 1 ) { return callback (errorCode.ACCOUNT_ALREADY_LINKED, results) }
+                if( results.length < 1 ) { return callback (errorCode.USERNAME_MISSING, results) }
                 callback (error, results[0]);
             });
         },
