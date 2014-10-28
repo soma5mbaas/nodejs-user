@@ -13,9 +13,9 @@ var InstallationClass = 'Installations'
 var store = require('haru-nodejs-store');
 
 var uuid = require('uuid');
+var uid2 = require('uid2');
 
 var TTL = require('../config').sessionToken.TTL;
-
 
 exports.signup = function(input, callback) {
     var deviceToken = input.userinfo.deviceToken;
@@ -36,6 +36,7 @@ exports.signup = function(input, callback) {
             async.series([
                 function saveUserinfoToMongo(callback) {
                     store.get('mongodb').insert(userCollectionKey, input.userinfo, function(error, results) {
+                        if( input.userinfo.authData ) {  input.userinfo.authData = JSON.stringify(input.userinfo.authData); }
                         callback(error, results);
                     });
                 },
@@ -96,7 +97,12 @@ exports.signup = function(input, callback) {
             });
         }
     ], function done(error, results) {
-        callback(error, results[1]);    // return Session-Token
+        callback(error,  {
+            _id: input.userinfo._id,
+            createdAt: input.userinfo.createdAt,
+            updatedAt: input.userinfo.updatedAt,
+            sessionToken: results[1]
+        });
     });
 };
 
@@ -105,23 +111,103 @@ exports.signupSocial = function(input, callback) {
     var applicationId = input.applicationId;
 
     var authData = input.userinfo.authData;
+    var authCondtion = _createCondition(authData);
 
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
-    async.series([
+
+    async.waterfall([
         function isExists(callback) {
-            store.get('mongodb').find(userCollectionKey, {authData: authData}, function(error, results) {
-                console.log(results);
+            store.get('mongodb').find(userCollectionKey, authCondtion, function(error, results) {
+                callback (error, results[0]);
             });
         },
-        function signup(callback) {
+        function signup(user, callback) {
+            if( !user ) {
+                // 신규 유저는 random id 를 생성해서 가입시킨다.
+                input.userinfo.username = _createRandomUesrname(applicationId);
+                exports.signup(input, callback);
+            } else {
+                // 기존 유저는 session-token 발행한다.
+                input.userinfo.createdAt = user.createdAt;
+                input.userinfo._id = user._id;
 
+                async.series([
+                    function saveUserinfoToMongo(callback) {
+                        var d = {
+                            updatedAt: input.timestamp,
+                            authData: authData,
+                            deviceToken: deviceToken
+                        };
+
+                        store.get('mongodb').update(userCollectionKey, authCondtion, {$set: d}, function(error, results) {
+                            input.userinfo.authData = JSON.stringify(authData);
+                            callback(error, results);
+                        });
+                    },
+                    function saveUserinfoToRedis(callback) {
+                        var userHasMapKey = keys.entityDetail(UsersClass, user._id, applicationId);
+                        var keyset = keys.entityKey(UsersClass, applicationId);
+
+                        store.get('service').multi()
+                            .hmset(userHasMapKey, input.userinfo)
+                            .zadd(keyset, input.timestamp, user._id)
+                            .exec(function(error, replies) {
+                                callback(error, replies);
+                            });
+                    },
+                    function registSessionToken(callback){
+                        var token = uuid();
+
+                        var tokenIdKey = keys.tokenIdKey(applicationId, token);
+                        var idTokenKey = keys.idTokenKey(applicationId, user._id);
+
+                        store.get('public').multi()
+                            .sadd(idTokenKey, token)
+                            .hmset(tokenIdKey, input.userinfo)
+                            .expire(tokenIdKey, TTL)
+                            .expire(idTokenKey, TTL)
+                            .exec(function(error, results) {
+                                callback(error,  {
+                                    _id: user._id,
+                                    createdAt: user.createdAt,
+                                    updatedAt: user.updatedAt,
+                                    sessionToken: token
+                                });
+                            });
+                    },
+                    function updateInstallationUserId(callback) {
+                        var installationCollection = keys.collectionKey(InstallationClass, applicationId);
+                        var installationHash = keys.installationKey(applicationId);
+
+                        async.series([
+                            function updateMongo(callback){
+                                store.get('mongodb').update(installationCollection,
+                                    {deviceToken: deviceToken}, {$set: {userId: user._id}},
+                                    callback );
+                            },
+                            function updateRedis(callback) {
+                                store.get('service').hget(installationHash, deviceToken, function(error, deviceId) {
+                                    // TODO deviceToken error handling
+                                    var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
+                                    store.get('service').hset(installationKey, 'userId', user._id, callback);
+                                });
+                            }
+                        ], function done(error, results) {
+                            callback(error, results);
+                        });
+                    }
+                ], function done(error, results) {
+                    if(results.length > 2) {
+                        callback(error, results[2]);
+                    } else {
+                        callback(error, null);
+                    }
+                });
+            }
         }
     ], function done(error, results) {
-    
+        callback(error, results);
     });
-
-
-
 };
 
 exports.login = function(input, callback) {
@@ -185,11 +271,11 @@ exports.validSessionToken = function(input, callback) {
     var userCollectionKey = keys.collectionKey(UsersClass, input.applicationId);
     var tokenIdKey = keys.tokenIdKey(input.applicationId, input.sessionToken);
 
-
     async.waterfall([
         function isValidSessionToken(callback){
             store.get('public').hget( tokenIdKey, '_id', function(error, result) {
                 if( result == null ) return callback(errorCode.INVALID_USER_TOKEN, result);
+                console.log(result);
 
                 var idTokenKey = keys.idTokenKey(input.applicationId, result);
                 store.get('public').multi()
@@ -249,4 +335,63 @@ exports.logout = function(input, callback) {
     ], function done(error, results) {
         callback(error, results);
     });
+};
+
+exports.update = function(input, callback) {
+    var applicationId = input.applicationId;
+    var _id = input._id;
+    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+
+    async.series([
+        function updateMongo(callback) {
+            store.get('mongodb').update(userCollectionKey, {_id: _id}, {$set: input.userinfo}, function(error, results) {
+                if( input.userinfo.authData ) {
+                    input.userinfo.authData = JSON.stringify(input.userinfo.authData);
+                }
+                callback(error, results);
+            });
+        },
+        function updateRedis(callback) {
+            var userHasMapKey = keys.entityDetail(UsersClass, _id, applicationId);
+            var keyset = keys.entityKey(UsersClass, applicationId);
+
+            store.get('service').multi()
+                .hmset(userHasMapKey, input.userinfo)
+                .zadd(keyset, input.timestamp, _id)
+                .exec(function(error, replies) {
+                    callback(error, replies);
+                });
+        }
+    ], function done(error, results) {
+        callback(error, results);
+    });
+};
+
+
+exports.retrieve = function(input, callback) {
+    var applicationId = input.applicationId;
+    var _id = input.userinfo._id;
+    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+
+    store.get('mongodb').find( userCollectionKey, {_id: input.userinfo._id}, function(error, results) {
+        if( results.length < 1 ) { return callback (errorCode.MISSING_ENTITY_ID, results) }
+
+        callback (error, results);
+    });
+};
+
+function _createRandomUesrname(applicationId) {
+    return (String.fromCharCode(_.random(97, 122)) + uid2(_.random(5, 10))).toLowerCase();
+};
+
+function _createCondition(authData) {
+    var providers = Object.keys(authData);
+    var condition = {};
+
+    for( var i = 0; i < providers.length; i++ ){
+        var provider = providers[i];
+        condition['authData.'+provider+'.id'] = authData[provider].id;
+    }
+
+    return condition;
 };

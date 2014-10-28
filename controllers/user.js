@@ -19,30 +19,20 @@ exports.signup = function(req, res) {
     input.userinfo.createdAt = input.userinfo.updatedAt = input.timestamp;
 
     if( input.userinfo.authData ) {
-        // social signup
+        // social signup, login
+        schemaHandler.createUserSchema(input.applicationId, input.userinfo);
         userHandler.signupSocial(input, function(error, results) {
             if(error) { return sendError(res, error); }
 
-            var output = {};
-
-            output.createdAt = output.updatedAt = input.timestamp;
-            output.sessionToken = results;
-            output._id = input.userinfo._id;
-
-            res.json(output);
+            res.json(results);
         });
     } else {
         // default signup
         schemaHandler.createUserSchema(input.applicationId, input.userinfo);
         userHandler.signup(input, function(error, results) {
             if(error) { return sendError(res, error); }
-            var output = {};
 
-            output.createdAt = output.updatedAt = input.timestamp;
-            output.sessionToken = results;
-            output._id = input.userinfo._id;
-
-            res.json(output);
+            res.json(results);
         });
     }
 };
@@ -61,18 +51,6 @@ exports.login = function(req, res) {
         if(error) { return sendError(res, error); }
 
         res.json(result);
-    });
-};
-
-exports.validtoken = function(req, res) {
-    var input = getHeader(req);
-
-    userHandler.validSessionToken(input, function(error, results) {
-        if(error) return sendError(res, error);
-
-        delete results.password;
-
-        res.json(results);
     });
 };
 
@@ -123,7 +101,23 @@ exports.logoutOther = function(req, res) {
 
 
 exports.update = function(req, res) {
+    var input = getHeader(req);
 
+    input._id = req.params._id;
+    input.userinfo = req.body;
+
+    delete input.userinfo.username;
+    delete input.userinfo.password;
+    delete input.userinfo.createdAt;
+
+    input.userinfo.updatedAt = input.timestamp;
+
+    schemaHandler.createUserSchema(input.applicationId, input.userinfo);
+    userHandler.update(input, function(error, results) {
+        if( error ) { return sendError(res, error); }
+
+        res.json({updatedAt: input.timestamp});
+    });
 };
 
 exports.delete = function(req, res) {
@@ -131,5 +125,18 @@ exports.delete = function(req, res) {
 };
 
 exports.retrieve = function(req, res) {
+    var input = getHeader(req);
+    input.userinfo ={_id : req.params._id };
 
+    if( input.userinfo._id === 'me') {
+        userHandler.validSessionToken(input, function(error, results) {
+            if(error) return sendError(res, error);
+            res.json(results);
+        });
+    } else {
+        userHandler.retrieve(input, function(error, results) {
+            if(error) return sendError(res, error);
+            res.json(results);
+        });
+    }
 };
