@@ -44,7 +44,7 @@ exports.login = function(req, res) {
     userHandler.login(input, function(error, result) {
         if(error) { return sendError(res, error); }
 
-        res.json({sessionToken: result});
+        res.json(result);
     });
 };
 
