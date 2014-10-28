@@ -121,7 +121,17 @@ exports.update = function(req, res) {
 };
 
 exports.delete = function(req, res) {
-    
+    var input = getHeader(req);
+    input.userinfo ={_id : req.params._id };
+
+    if( !input.userinfo._id ) { return sendError(res, errorCode.MISSING_ENTITY_ID); }
+    if( !input.sessionToken ) { return sendError(res, errorCode.SESSION_MISSING); }
+
+    userHandler.delete(input, function(error, results) {
+        if(error) return sendError(res, error);
+
+        res.json({success: true});
+    });
 };
 
 exports.retrieve = function(req, res) {

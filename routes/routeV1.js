@@ -8,9 +8,7 @@ var installation = require('../controllers/installation');
 router.post('/users', user.signup);     // signing up, linking users
 router.put('/users/:_id', user.update);      // updating users, linking users, verifying email
 router.delete('/users/:_id', user.delete);   // delete users
-router.get('/users/:_id', user.retrieve);  // querying uesrs
-
-//router.get('/users/me', user.validSessionToken); // validating Session Tokens, retreiving current user
+router.get('/users/:_id', user.retrieve);  //  validating Session Tokens, retreiving current user
 
 router.get('/login', user.login);
 router.get('/logout/me', user.logout);

@@ -275,7 +275,6 @@ exports.validSessionToken = function(input, callback) {
         function isValidSessionToken(callback){
             store.get('public').hget( tokenIdKey, '_id', function(error, result) {
                 if( result == null ) return callback(errorCode.INVALID_USER_TOKEN, result);
-                console.log(result);
 
                 var idTokenKey = keys.idTokenKey(input.applicationId, result);
                 store.get('public').multi()
@@ -377,6 +376,57 @@ exports.retrieve = function(input, callback) {
         if( results.length < 1 ) { return callback (errorCode.MISSING_ENTITY_ID, results) }
 
         callback (error, results);
+    });
+};
+
+exports.delete = function(input, callback) {
+    var applicationId = input.applicationId;
+    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+    var _id = input.userinfo._id;
+    var tokenIdKey = keys.tokenIdKey(input.applicationId, input.sessionToken);
+
+    async.waterfall([
+        function isValidSessionToken(callback){
+            store.get('public').hget( tokenIdKey, '_id', function(error, result) {
+                if( result == null ) return callback(errorCode.SESSION_MISSING, result);
+                callback(error, result);
+            });
+        },
+        function selectTokens(e, callback) {
+            store.get('public').smembers(keys.idTokenKey(applicationId, _id), function(error, results) {
+                callback(error, _id, results)
+            });
+        },
+        function expireTokens(id, tokens, callback) {
+            if( tokens.length > 0 ) {
+                var multi = store.get('public').multi();
+
+                for( var i = 0; i < tokens.length; i++ ) {
+                    multi.del( keys.tokenIdKey(applicationId, tokens[i]) );
+                }
+
+                multi.del(keys.idTokenKey(applicationId, id));
+                multi.exec(callback);
+            } else {
+                callback(null, null);
+            }
+        },
+        function deleteMongoDb(r, callback) {
+            store.get('mongodb').remove(userCollectionKey, {_id: _id}, callback);
+        },
+        function deleteRedis(e, r, callback) {
+            var userHasMapKey = keys.entityDetail(UsersClass, _id, applicationId);
+            var keyset = keys.entityKey(UsersClass, applicationId);
+
+            store.get('service').multi()
+                .del(userHasMapKey)
+                .zrem(keyset, _id)
+                .exec(function(error, replies) {
+                    callback(error, replies);
+                });
+        }
+    ], function done(error, results) {
+        callback(error, results);
     });
 };
 
