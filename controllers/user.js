@@ -18,17 +18,33 @@ exports.signup = function(req, res) {
     input.userinfo._id = uuid();
     input.userinfo.createdAt = input.userinfo.updatedAt = input.timestamp;
 
-    schemaHandler.createUserSchema(input.applicationId, input.userinfo);
-    userHandler.signup(input, function(error, results) {
-        if(error) { return sendError(res, error); }
-        var output = {};
+    if( input.userinfo.authData ) {
+        // social signup
+        userHandler.signupSocial(input, function(error, results) {
+            if(error) { return sendError(res, error); }
 
-        output.createdAt = output.updatedAt = input.timestamp;
-        output.sessionToken = results;
-        output._id = input.userinfo._id;
+            var output = {};
 
-        res.json(output);
-    });
+            output.createdAt = output.updatedAt = input.timestamp;
+            output.sessionToken = results;
+            output._id = input.userinfo._id;
+
+            res.json(output);
+        });
+    } else {
+        // default signup
+        schemaHandler.createUserSchema(input.applicationId, input.userinfo);
+        userHandler.signup(input, function(error, results) {
+            if(error) { return sendError(res, error); }
+            var output = {};
+
+            output.createdAt = output.updatedAt = input.timestamp;
+            output.sessionToken = results;
+            output._id = input.userinfo._id;
+
+            res.json(output);
+        });
+    }
 };
 
 exports.login = function(req, res) {
@@ -102,5 +118,18 @@ exports.logoutOther = function(req, res) {
 
         res.json({success: true});
     });
+
+};
+
+
+exports.update = function(req, res) {
+
+};
+
+exports.delete = function(req, res) {
+    
+};
+
+exports.retrieve = function(req, res) {
 
 };

@@ -1,10 +1,8 @@
 var async = require('async');
 var uuid = require('uuid');
 
+var store = require('haru-nodejs-store');
 
-var redisService = require('../connectors').redisService;
-var redisPublic = require('../connectors').redisPublic;
-var mongodb = require('../connectors').mongodb;
 
 var keys = require('haru-nodejs-util').keys;
 
@@ -16,7 +14,7 @@ exports.createInstallation = function(input, callback) {
 
     async.waterfall([
         function isExists(callback) {
-            mongodb.find(installationCollection, {deviceToken: input.installation.deviceToken}, function(error, results) {
+            store.get('mongodb').find(installationCollection, {deviceToken: input.installation.deviceToken}, function(error, results) {
                 callback(error, results);
             });
         },
@@ -30,15 +28,15 @@ exports.createInstallation = function(input, callback) {
 
             async.series([
                 function insertMongodb(callback){
-                    mongodb.insert(installationCollection, input.installation, callback);
+                    store.get('mongodb').insert(installationCollection, input.installation, callback);
                 },
                 function addClasse(callback) {
                     var classesKey = keys.classesKey(input.applicationId);
 
-                    redisPublic.sadd(classesKey, InstallationClass, callback);
+                    store.get('public').sadd(classesKey, InstallationClass, callback);
                 },
                 function insertRedis(callback) {
-                    redisService.multi()
+                    store.get('service').multi()
                                 .hmset(installationKey, input.installation)
                                 .hset(installationHash, input.installation.deviceToken, input.installation._id)
                                 .zadd(entityKey, input.installation.updatedAt, input.installation._id)
@@ -51,7 +49,7 @@ exports.createInstallation = function(input, callback) {
     ], function done(error, results) {
         callback(error, results);
     });
-    
+
 };
 
 exports.updateInstallation = function(input, callback) {
@@ -61,21 +59,21 @@ exports.updateInstallation = function(input, callback) {
 
     async.series([
         function updateMongoDB(callback){
-            mongodb.update(installationCollection, {_id: input._id}, {$set:input.installation}, function(error, results) {
+            store.get('mongodb').update(installationCollection, {_id: input._id}, {$set:input.installation}, function(error, results) {
                 if( results < 1 ) { return callback(errorCode.MISSING_ENTITY_ID, results);}
 
                 callback(error, results);
             });
         },
         function updateRedis(callback) {
-            redisService.multi()
+            store.get('service').multi()
                         .hmset(installationKey, input.installation)
                         .zadd(entityKey, input.installation.updatedAt, input._id)
                         .exec(callback);
 
         },
         function getInstallation(callback) {
-            redisService.hgetall(installationKey, callback);
+            store.get('service').hgetall(installationKey, callback);
         }
     ], function done(error, results) {
         callback(error, results[2]);    // installation 정보만 리턴

@@ -1,5 +1,5 @@
-var redisPublic = require('../connectors').redisPublic;
-var redisService = require('../connectors').redisService;
+var store = require('haru-nodejs-store');
+
 
 var keys = require('haru-nodejs-util').keys;
 var exportSchemaToJson = require('haru-nodejs-util').common.exportSchemaToJson;
@@ -14,32 +14,32 @@ exports.createUserSchema = function(applicationId, user, callback) {
     var schemaKey = keys.schemaKey(applicationId, UsersClass);
     var schema = exportSchemaToJson( user, UserSchema );
 
-    redisService.hmset(schemaKey, schema);
+    store.get('public').hmset(schemaKey, schema);
 };
 
 exports.updateUserSchema = function(applicationId, user, callback) {
     var schemaKey = keys.schemaKey(applicationId, UsersClass);
 
-    redisService.hmsetnx(schemaKey, user);
+    store.get('public').hmsetnx(schemaKey, user);
 };
 
 exports.createInstallationSchema = function(applicationId, installation, callbck) {
     var schemaKey = keys.schemaKey(applicationId, InstallationClass);
     var schema = exportSchemaToJson( installation, InstallationSchema );
 
-    redisService.hmset(schemaKey, schema);
+    store.get('public').hmset(schemaKey, schema);
 };
 
 exports.updateInstallationSchema = function(applicationId, installation, callbck) {
     var schemaKey = keys.schemaKey(applicationId, InstallationClass);
     var schema = exportSchemaToJson( installation, InstallationSchema );
 
-    redisService.hmsetnx(schemaKey, schema);
+    store.get('public').hmsetnx(schemaKey, schema);
 };
 
 
 exports.retrieveSchema = function(input, callback) {
-    redisService.hgetall( key, function(error, results) {
+    store.get('public').hgetall( key, function(error, results) {
 		if( error ) {}
 
 		callback(error, results);
