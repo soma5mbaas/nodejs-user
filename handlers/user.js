@@ -259,7 +259,7 @@ exports.login = function(input, callback) {
                 .expire(tokenIdKey, TTL)
                 .expire(idTokenKey, TTL)
                 .exec(function(error, results) {
-                    callback(error, {sesstionToken: token, _id: userInfo._id} );
+                    callback(error, {sessionToken: token, _id: userInfo._id} );
                 });
         }
     ], function done(error, result) {
