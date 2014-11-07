@@ -113,7 +113,7 @@ exports.signup = function(input, callback) {
             _id: input.userinfo._id,
             createdAt: input.userinfo.createdAt,
             updatedAt: input.userinfo.updatedAt,
-            sessionToken: results[1]
+            sessionToken: results[2]
         });
     });
 };
