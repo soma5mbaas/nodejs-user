@@ -13,7 +13,19 @@ exports.createInstallation = function(input, callback) {
     var installationCollection = keys.collectionKey(InstallationClass, input.applicationId);
 
     async.waterfall([
-        function isExists(callback) {
+        function checkClass(callback) {
+            store.get('public').sismember(keys.classesKey(input.applicationId), InstallationClass,function(error, results) {
+
+                if( results === 0 ) {
+                    var classesKey = keys.classesKey(input.applicationId);
+                    store.get('public').sadd(classesKey, InstallationClass);
+                    store.get('mongodb').addShardCollection(installationCollection);
+                }
+
+                callback(error, results);
+            });
+        },
+        function isExists(_, callback) {
             store.get('mongodb').find(installationCollection, {deviceToken: input.installation.deviceToken}, function(error, results) {
                 callback(error, results);
             });
@@ -29,11 +41,6 @@ exports.createInstallation = function(input, callback) {
             async.series([
                 function insertMongodb(callback){
                     store.get('mongodb').insert(installationCollection, input.installation, callback);
-                },
-                function addClasse(callback) {
-                    var classesKey = keys.classesKey(input.applicationId);
-
-                    store.get('public').sadd(classesKey, InstallationClass, callback);
                 },
                 function insertRedis(callback) {
                     store.get('service').multi()

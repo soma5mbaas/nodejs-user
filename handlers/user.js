@@ -25,6 +25,18 @@ exports.signup = function(input, callback) {
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
 
     async.series([
+        function checkClass(callback) {
+            store.get('public').sismember(keys.classesKey(input.applicationId), UsersClass,function(error, results) {
+
+                if( results === 0 ) {
+                    var classesKey = keys.classesKey(input.applicationId);
+                    store.get('public').sadd(classesKey, UsersClass);
+                    store.get('mongodb').addShardCollection(userCollectionKey);
+                }
+
+                callback(error, results);
+            });
+        },
         function isExists(callback) {
             store.get('mongodb').find( userCollectionKey, {username: input.userinfo.username}, function(error, results) {
                 if( results.length > 0 ) { return callback (errorCode.ACCOUNT_ALREADY_LINKED, results) }
