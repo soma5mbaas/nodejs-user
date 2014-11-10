@@ -2,6 +2,7 @@ var express = require('express');
 var bodyParser = require('body-parser');
 
 var store = require('haru-nodejs-store');
+var analysis = require('haru-nodejs-analysis');
 
 
 var index = require('./routes/index');
@@ -15,6 +16,7 @@ store.connect(require('./config').store);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded());
+app.use(analysis({analysis: config.mqueue.analysis}));
 
 
 app.use('/', index);

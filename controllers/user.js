@@ -18,6 +18,9 @@ exports.signup = function(req, res) {
     input.userinfo._id = uuid();
     input.userinfo.createdAt = input.userinfo.updatedAt = input.timestamp;
 
+    console.log(input.userinfo);
+
+
     if( input.userinfo.authData ) {
         // social signup, login
         schemaHandler.createUserSchema(input.applicationId, input.userinfo);
