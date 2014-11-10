@@ -84,25 +84,30 @@ exports.signup = function(input, callback) {
                     store.get('public').sadd(classesKey, UsersClass, callback);
                 },
                 function updateInstallationUserId(callback) {
-                    var installationCollection = keys.collectionKey(InstallationClass, applicationId);
-                    var installationHash = keys.installationKey(applicationId);
+                    if(deviceToken) {
+                        var installationCollection = keys.collectionKey(InstallationClass, applicationId);
+                        var installationHash = keys.installationKey(applicationId);
 
-                    async.series([
-                        function updateMongo(callback){
-                            store.get('mongodb').update(installationCollection,
-                                {deviceToken: deviceToken}, {$set: {userId: userId}},
-                                callback );
-                        },
-                        function updateRedis(callback) {
-                            store.get('service').hget(installationHash, deviceToken, function(error, deviceId) {
-                                // TODO deviceToken error handling
-                               var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
-                               store.get('service').hset(installationKey, 'userId', userId, callback);
-                            });
-                        }
-                    ], function done(error, results) {
-                        callback(error, results);
-                    });
+                        async.series([
+                            function updateMongo(callback){
+                                store.get('mongodb').update(installationCollection,
+                                    {deviceToken: deviceToken}, {$set: {userId: userId}},
+                                    callback );
+                            },
+                            function updateRedis(callback) {
+                                store.get('service').hget(installationHash, deviceToken, function(error, deviceId) {
+                                    // TODO deviceToken error handling
+                                    var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
+                                    store.get('service').hset(installationKey, 'userId', userId, callback);
+                                });
+                            }
+                        ], function done(error, results) {
+                            callback(error, results);
+                        });
+                    } else {
+                        callback(null, null);
+                    }
+
                 }
             ], function done(error, results) {
                 callback(error, results[2]);    // return Session-Token
