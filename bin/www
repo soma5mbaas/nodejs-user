@@ -1,26 +1,32 @@
 #!/usr/bin/env node
-var debug = require('debug')('service');
 var cluster = require('cluster');
-
 var Logger  = require('haru-nodejs-util').Logger;
+var logConfig = require('../logConfig');
+var config = require('../config');
+
+
+/**
+ * Set Name Space
+ * Name Space [ 'ns', 'stage', 'releases' ]
+ * **/
+require('haru-nodejs-util').keys.setNameSpace(config.namespace);
 
 // Time Zone
 process.env.TZ = 'Asia/Seoul';
 
 // Global Config
-global.config = require('../config');
+global.config = config;
 
 // Global Error Code
 global.errorCode = require('haru-nodejs-util').errorCode;
 
 // set logger
-global.log  = new Logger( __dirname +'/../logs/debug.log');
-global.loge = new Logger( __dirname +'/../logs/exception.log');
+global.log  = new Logger( __dirname +'/../logs/debug.log', logConfig[config.namespace]);
 
 // // Exception
-// process.on('uncaughtException', function(error) {
-// 	loge.error(error);
-// });
+process.on('uncaughtException', function(error) {
+	log.error('[%d] uncaughtException : ', process.pid, error.stack);
+});
 
 if( cluster.isMaster ) {
 	var processCount = require('os').cpus().length - 2;
@@ -29,9 +35,10 @@ if( cluster.isMaster ) {
 	}
 
 	cluster.on('exit',function(worker) {
-		log.info('[%d] worker is exit', worker.process.pid);
+		log.error('[%d] worker is exit', worker.process.pid);
+		cluster.fork();
 	});
-	
+
 	for( var i = 0; i < processCount; i++ ) {
 		var worker = cluster.fork();
 	}
