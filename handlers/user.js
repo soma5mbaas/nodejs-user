@@ -40,7 +40,6 @@ exports.signup = function(input, callback) {
         function isExists(callback) {
             store.get('mongodb').find( userCollectionKey, {username: input.userinfo.username}, function(error, results) {
                 if( results.length > 0 ) { return callback (errorCode.ACCOUNT_ALREADY_LINKED, results) }
-
                 callback (error, results);
             });
         },
@@ -80,7 +79,6 @@ exports.signup = function(input, callback) {
                 },
                 function addClasse(callback) {
                     var classesKey = keys.classesKey(input.applicationId);
-
                     store.get('public').sadd(classesKey, UsersClass, callback);
                 },
                 function updateInstallationUserId(callback) {
@@ -91,8 +89,11 @@ exports.signup = function(input, callback) {
                         async.series([
                             function updateMongo(callback){
                                 store.get('mongodb').update(installationCollection,
-                                    {deviceToken: deviceToken}, {$set: {userId: userId}},
-                                    callback );
+                                    {deviceToken: deviceToken}, {$set: {userId: userId}},{},
+                                    function(error, results) {
+                                        if(error && error.message == 'Invalid condition') { return callback(errorCode.INVALID_DEVICE_TOKEN, results);}
+                                        callback(error, results);
+                                    });
                             },
                             function updateRedis(callback) {
                                 store.get('service').hget(installationHash, deviceToken, function(error, deviceId) {
@@ -157,7 +158,7 @@ exports.signupSocial = function(input, callback) {
                             deviceToken: deviceToken
                         };
 
-                        store.get('mongodb').update(userCollectionKey, authCondtion, {$set: d}, function(error, results) {
+                        store.get('mongodb').update(userCollectionKey, authCondtion, {$set: d},{}, function(error, results) {
                             input.userinfo.authData = JSON.stringify(authData);
                             callback(error, results);
                         });
@@ -200,7 +201,7 @@ exports.signupSocial = function(input, callback) {
                         async.series([
                             function updateMongo(callback){
                                 store.get('mongodb').update(installationCollection,
-                                    {deviceToken: deviceToken}, {$set: {userId: user._id}},
+                                    {deviceToken: deviceToken}, {$set: {userId: user._id}},{},
                                     callback );
                             },
                             function updateRedis(callback) {
@@ -247,7 +248,7 @@ exports.login = function(input, callback) {
 
                 async.series([
                     function updateMongo(callback) {
-                        store.get('mongodb').update(installationCollection, {deviceToken: deviceToken}, {$set: {userId: userInfo._id}}, callback);
+                        store.get('mongodb').update(installationCollection, {deviceToken: deviceToken}, {$set: {userId: userInfo._id}},{}, callback);
                     },
                     function updateRedis(callback) {
                         store.get('service').hget(installationHash, deviceToken, function (error, deviceId) {
@@ -361,7 +362,7 @@ exports.update = function(input, callback) {
 
     async.series([
         function updateMongo(callback) {
-            store.get('mongodb').update(userCollectionKey, {_id: _id}, {$set: input.userinfo}, function(error, results) {
+            store.get('mongodb').update(userCollectionKey, {_id: _id}, {$set: input.userinfo},{}, function(error, results) {
                 if( input.userinfo.authData ) {
                     input.userinfo.authData = JSON.stringify(input.userinfo.authData);
                 }
