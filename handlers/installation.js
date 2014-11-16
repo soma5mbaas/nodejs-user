@@ -31,27 +31,34 @@ exports.createInstallation = function(input, callback) {
             });
         },
         function insertInstallation(installations, callback){
-            if(installations.length > 0) { return callback(null, installations[0]); }
+            if(installations.length > 0) {
+                // return callback(null, installations[0]);
+                // installations 가 존재하면 update 14.11.16
+                input._id = installations[0]._id;
+                delete input.installation._id;
+                exports.updateInstallation(input, callback);
 
-            input.installation._id = uuid();
-            var installationKey = keys.entityDetail(InstallationClass, input.installation._id, input.applicationId);
-            var installationHash = keys.installationKey(input.applicationId);
-            var entityKey = keys.entityKey( InstallationClass, input.applicationId);
+            } else {
+                input.installation._id = uuid();
+                var installationKey = keys.entityDetail(InstallationClass, input.installation._id, input.applicationId);
+                var installationHash = keys.installationKey(input.applicationId);
+                var entityKey = keys.entityKey( InstallationClass, input.applicationId);
 
-            async.series([
-                function insertMongodb(callback){
-                    store.get('mongodb').insert(installationCollection, input.installation, callback);
-                },
-                function insertRedis(callback) {
-                    store.get('service').multi()
-                                .hmset(installationKey, input.installation)
-                                .hset(installationHash, input.installation.deviceToken, input.installation._id)
-                                .zadd(entityKey, input.installation.updatedAt, input.installation._id)
-                                .exec(callback);
-                }
-            ], function done(error, results) {
-                callback(error, results[0][0]);
-            });
+                async.series([
+                    function insertMongodb(callback){
+                        store.get('mongodb').insert(installationCollection, input.installation, callback);
+                    },
+                    function insertRedis(callback) {
+                        store.get('service').multi()
+                            .hmset(installationKey, input.installation)
+                            .hset(installationHash, input.installation.deviceToken, input.installation._id)
+                            .zadd(entityKey, input.installation.updatedAt, input.installation._id)
+                            .exec(callback);
+                    }
+                ], function done(error, results) {
+                    callback(error, results[0][0]);
+                });
+            }
         }
     ], function done(error, results) {
         callback(error, results);
