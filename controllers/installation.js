@@ -24,8 +24,8 @@ exports.create = function (req, res) {
 
         res.json({
             _id: installation._id,
-            createdAt: installation.createdAt,
-            updatedAt: installation.updatedAt
+            createdAt: installation.createdAt-0,
+            updatedAt: installation.updatedAt-0
         });
     });
 };
