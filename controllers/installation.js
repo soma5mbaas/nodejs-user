@@ -12,21 +12,15 @@ exports.create = function (req, res) {
 
     // Installation Entity
     input.installation = req.body;
-
-    input.installation._id = input._id = uuid();
     input.installation.createdAt = input.installation.updatedAt = input.timestamp;
 
     handler.createInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
-        if(installation == null) { return sendError(res, errorCode.OTHER_CAUSE); }
+        if(installation === null) { return sendError(res, errorCode.OTHER_CAUSE); }
 
         schema.createInstallationSchema(input.applicationId, installation);
 
-        res.json({
-            _id: installation._id,
-            createdAt: installation.createdAt-0,
-            updatedAt: installation.updatedAt-0
-        });
+        res.json(installation);
     });
 };
 
@@ -38,17 +32,13 @@ exports.update = function(req, res) {
     input.installation = req.body;
     input.installation.updatedAt = input.timestamp;
 
-    handler.updateInstallation(input, function(error, installation) {
+    handler.createInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
-        if(installation == null) { return sendError(res, errorCode.OTHER_CAUSE); }
+        if(installation === null) { return sendError(res, errorCode.OTHER_CAUSE); }
 
-        schema.updateInstallationSchema(input.applicationId, installation);
+        schema.createInstallationSchema(input.applicationId, installation);
 
-        res.json({
-            _id: installation._id,
-            createdAt: installation.createdAt,
-            updatedAt: installation.updatedAt
-        });
+        res.json(installation);
     });
 };
 

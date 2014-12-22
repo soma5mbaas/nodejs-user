@@ -17,115 +17,124 @@ var uid2 = require('uid2');
 
 var TTL = require('../config').sessionToken.TTL;
 
+var _createEntityId = require('haru-nodejs-util').common.createEntityId;
+var _getShardKey = require('haru-nodejs-util').common.getShardKey;
+
+var passwordHash = require('password-hash');
+
+
 exports.signup = function(input, callback) {
-    var deviceToken = input.userinfo.deviceToken;
-    var userId = input.userinfo._id;
     var applicationId = input.applicationId;
+    var userinfo = input.userinfo;
 
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+    var installationCollectionKey = keys.collectionKey(InstallationClass, applicationId);
+
+    var usernameKey = keys.usernameKey(applicationId);
+    var classList = keys.classesKey(applicationId);
+
+    var hashedPassword = passwordHash.generate( userinfo.password );
 
     async.series([
-        function checkClass(callback) {
-            store.get('public').sismember(keys.classesKey(input.applicationId), UsersClass,function(error, results) {
-
-                if( results === 0 ) {
-                    var classesKey = keys.classesKey(input.applicationId);
-                    store.get('public').sadd(classesKey, UsersClass);
-                    store.get('mongodb').addShardCollection(userCollectionKey);
-                }
-
-                callback(error, results);
-            });
-        },
-        function isExists(callback) {
-            store.get('mongodb').find( userCollectionKey, {username: input.userinfo.username}, function(error, results) {
-                if( results.length > 0 ) { return callback (errorCode.ACCOUNT_ALREADY_LINKED, results) }
-                callback (error, results);
-            });
-        },
-        function signup(callback) {
-            async.series([
-                function saveUserinfoToMongo(callback) {
-                    store.get('mongodb').insert(userCollectionKey, input.userinfo, function(error, results) {
-                        if( input.userinfo.authData ) {  input.userinfo.authData = JSON.stringify(input.userinfo.authData); }
-                        callback(error, results);
-                    });
-                },
-                function saveUserinfoToRedis(callback) {
-                    var userHasMapKey = keys.entityDetail(UsersClass, userId, applicationId);
-                    var keyset = keys.entityKey(UsersClass, applicationId);
-
-                    store.get('service').multi()
-                                .hmset(userHasMapKey, input.userinfo)
-                                .zadd(keyset, input.timestamp, userId)
-                                .exec(function(error, replies) {
-                                    callback(error, replies);
-                                });
-                },
-                function registSessionToken(callback){
-                    var token = uuid();
-
-                    var tokenIdKey = keys.tokenIdKey(applicationId, token);
-                    var idTokenKey = keys.idTokenKey(applicationId, userId);
-
-                    store.get('public').multi()
-                                .sadd(idTokenKey, token)
-                                .hmset(tokenIdKey, input.userinfo)
-                                .expire(tokenIdKey, TTL)
-                                .expire(idTokenKey, TTL)
-                                .exec(function(error, results) {
-                                    callback(error, token);
-                                });
-                },
-                function addClasse(callback) {
-                    var classesKey = keys.classesKey(input.applicationId);
-                    store.get('public').sadd(classesKey, UsersClass, callback);
-                },
-                function updateInstallationUserId(callback) {
-                    if(deviceToken) {
-                        var installationCollection = keys.collectionKey(InstallationClass, applicationId);
-                        var installationHash = keys.installationKey(applicationId);
-
-                        async.series([
-                            function updateMongo(callback){
-                                store.get('mongodb').update(installationCollection,
-                                    {deviceToken: deviceToken}, {$set: {userId: userId}},{},
-                                    function(error, results) {
-                                        if(error && error.message == 'Invalid condition') { return callback(errorCode.INVALID_DEVICE_TOKEN, results);}
-                                        callback(error, results);
-                                    });
-                            },
-                            function updateRedis(callback) {
-                                store.get('service').hget(installationHash, deviceToken, function(error, deviceId) {
-                                    // TODO deviceToken error handling
-                                    var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
-                                    store.get('service').hset(installationKey, 'userId', userId, callback);
-                                });
-                            }
-                        ], function done(error, results) {
-                            callback(error, results);
-                        });
-                    } else {
-                        callback(null, null);
+        function checkUser(callback) {
+            store.get('public').multi()
+                .sadd(classList, UsersClass)
+                .hsetnx(usernameKey, userinfo.username+'.password', hashedPassword)
+                .exec(function(error, results) {
+                    if( results[0] === 1 /** isNewClass **/ ) {
+                        store.get('mongodb').addShardCollection(userCollectionKey);
                     }
 
-                }
-            ], function done(error, results) {
-                callback(error, results[2]);    // return Session-Token
+                    if( results[1] === 0 /** !isNewUser **/ ) {
+                        return callback( errorCode.ACCOUNT_ALREADY_LINKED, null );
+                    }
+
+                    callback(error);
+                });
+        },
+        function findInstallation(callback) {
+            if( userinfo.deviceToken ){
+                store.get('mongodb').find(installationCollectionKey, {deviceToken: userinfo.deviceToken}, function(error, installation) {
+                    if(_.isArray(installation) && installation.length > 0 ) {
+                        input.installation = installation[0];
+                    }
+                    callback(error, installation);
+                });
+            } else {
+                callback(null, null);
+            }
+        },
+        function createEntityId(callback) {
+            _createEntityId({ timestamp:input.timestamp, public: store.get('public') }, function(error, id, shardKey) {
+                input._id = userinfo._id = id;
+                input.shardKey = shardKey;
+
+                callback(error);
             });
-        }
+        },
+        function createSessionToken(callback) {
+            var token = input.shardKey+''+uuid();
+            input.sessionToken =  token;
+
+            callback(null, token);
+        },
+        function updateMongoDb(callback) {
+            store.get('mongodb').insert(userCollectionKey, userinfo, function(error, results) {
+                if(input.installation) {
+                    store.get('mongodb').update(installationCollectionKey, {deviceToken: userinfo.deviceToken}, {$set: {userId: userinfo._id}},{}, function(error, results) {
+                        if(error && error.message == 'Invalid condition') { return callback(errorCode.INVALID_DEVICE_TOKEN, results); }
+
+                        callback(error, results);
+                    });
+                } else {
+                    callback(error, results);
+                }
+            });
+        },
+        function updateRedisPublic(callback) {
+            var multi = store.get('public').multi();
+            var keyset = keys.entityKey(UsersClass, applicationId);
+
+            // userinfo
+            multi.zadd(keyset, input.timestamp, input._id)
+                .hsetnx(usernameKey, userinfo.username+'._id', input._id);
+
+            multi.exec(callback);
+        },
+        function updateRedisSerivce(callback) {
+            if( userinfo.authData ) {  userinfo.authData = JSON.stringify(userinfo.authData); }
+
+            var multi = store.get('service').multi(input.shardKey);
+
+            var tokenIdKey = keys.tokenIdKey(applicationId, input.sessionToken);
+            var idTokenKey = keys.idTokenKey(applicationId, input._id);
+
+            var userHasMapKey = keys.entityDetail(UsersClass, input._id, applicationId);
+
+            // sessionToken
+            multi.hmset(userHasMapKey, userinfo)
+                .sadd(idTokenKey, input.sessionToken)
+                .set(tokenIdKey, input._id)
+                .expire(tokenIdKey, TTL)
+                .expire(idTokenKey, TTL);
+
+            multi.exec(callback);
+        },
     ], function done(error, results) {
-        callback(error,  {
-            _id: input.userinfo._id,
-            createdAt: input.userinfo.createdAt,
-            updatedAt: input.userinfo.updatedAt,
-            sessionToken: results[2]
-        });
+        if( error ) {
+            if( error !== errorCode.ACCOUNT_ALREADY_LINKED ) {
+                store.get('public').srem(userNameSetKey, userinfo.username, function(error, results) {
+                    return callback(error, results);
+                });
+            }
+        }
+
+        callback(error, {_id: input._id, createdAt: userinfo.createdAt, updatedAt: userinfo.updatedAt, sessionToken: input.sessionToken});
     });
 };
 
-
 exports.signupSocial = function(input, callback) {
+    var userinfo = input.userinfo;
     var deviceToken = input.userinfo.deviceToken;
     var applicationId = input.applicationId;
 
@@ -133,15 +142,21 @@ exports.signupSocial = function(input, callback) {
     var authCondtion = _createCondition(authData);
 
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+    var installationCollectionKey = keys.collectionKey(InstallationClass, applicationId);
 
+    userinfo.password = _serializeAuthData(authData);
+    
     async.waterfall([
         function isExists(callback) {
             store.get('mongodb').find(userCollectionKey, authCondtion, function(error, results) {
-                callback (error, results[0]);
+                if( _.isArray(results) && results.length > 0 ) { return callback(error, results[0]); }
+
+
+                callback (error, null);
             });
         },
         function signup(user, callback) {
-            if( !user ) {
+            if( user === null ) {
                 // 신규 유저는 random id 를 생성해서 가입시킨다.
                 input.userinfo.username = _createRandomUesrname(applicationId);
                 exports.signup(input, callback);
@@ -149,140 +164,111 @@ exports.signupSocial = function(input, callback) {
                 // 기존 유저는 session-token 발행한다.
                 input.userinfo.createdAt = user.createdAt;
                 input.userinfo._id = user._id;
+                input._id = user._id;
 
+                input.shardKey = _getShardKey(user._id);
                 async.series([
-                    function saveUserinfoToMongo(callback) {
-                        var d = {
-                            updatedAt: input.timestamp,
-                            authData: authData,
-                            deviceToken: deviceToken
-                        };
+                    function createSessionToken(callback) {
+                        var token = input.shardKey+''+uuid();
 
-                        store.get('mongodb').update(userCollectionKey, authCondtion, {$set: d},{}, function(error, results) {
-                            input.userinfo.authData = JSON.stringify(authData);
-                            callback(error, results);
-                        });
+                        input.sessionToken =  token;
+
+                        callback(null, token);
                     },
-                    function saveUserinfoToRedis(callback) {
-                        var userHasMapKey = keys.entityDetail(UsersClass, user._id, applicationId);
-                        var keyset = keys.entityKey(UsersClass, applicationId);
+                    function updateMongoDb(callback) {
+                        store.get('mongodb').update(userCollectionKey,{_id: user._id}, {$set: {authData:authData}}, function(error, results) {
+                            if( deviceToken ) {
+                                store.get('mongodb').update(installationCollectionKey, {deviceToken: deviceToken}, {$set: {userId: user._id}},{}, function(error, results) {
+                                    if(error && error.message == 'Invalid condition') { return callback(errorCode.INVALID_DEVICE_TOKEN, results); }
 
-                        store.get('service').multi()
-                            .hmset(userHasMapKey, input.userinfo)
-                            .zadd(keyset, input.timestamp, user._id)
-                            .exec(function(error, replies) {
-                                callback(error, replies);
-                            });
-                    },
-                    function registSessionToken(callback){
-                        var token = uuid();
-
-                        var tokenIdKey = keys.tokenIdKey(applicationId, token);
-                        var idTokenKey = keys.idTokenKey(applicationId, user._id);
-
-                        store.get('public').multi()
-                            .sadd(idTokenKey, token)
-                            .hmset(tokenIdKey, input.userinfo)
-                            .expire(tokenIdKey, TTL)
-                            .expire(idTokenKey, TTL)
-                            .exec(function(error, results) {
-                                callback(error,  {
-                                    _id: user._id,
-                                    createdAt: user.createdAt,
-                                    updatedAt: user.updatedAt,
-                                    sessionToken: token
+                                    callback(error, results);
                                 });
-                            });
-                    },
-                    function updateInstallationUserId(callback) {
-                        var installationCollection = keys.collectionKey(InstallationClass, applicationId);
-                        var installationHash = keys.installationKey(applicationId);
-
-                        async.series([
-                            function updateMongo(callback){
-                                store.get('mongodb').update(installationCollection,
-                                    {deviceToken: deviceToken}, {$set: {userId: user._id}},{},
-                                    callback );
-                            },
-                            function updateRedis(callback) {
-                                store.get('service').hget(installationHash, deviceToken, function(error, deviceId) {
-                                    // TODO deviceToken error handling
-                                    var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
-                                    store.get('service').hset(installationKey, 'userId', user._id, callback);
-                                });
+                            } else {
+                                callback(error, results);
                             }
-                        ], function done(error, results) {
-                            callback(error, results);
                         });
-                    }
+                    },
+                    function updateRedisSerivce(callback) {
+                        if( userinfo.authData ) {  userinfo.authData = JSON.stringify(userinfo.authData); }
+
+                        var multi = store.get('service').multi(input.shardKey);
+
+                        var tokenIdKey = keys.tokenIdKey(applicationId, input.sessionToken);
+                        var idTokenKey = keys.idTokenKey(applicationId, input._id);
+
+                        var userHasMapKey = keys.entityDetail(UsersClass, input._id, applicationId);
+
+                        // sessionToken
+                        multi.hmset(userHasMapKey, userinfo)
+                            .sadd(idTokenKey, input.sessionToken)
+                            .set(tokenIdKey, input._id)
+                            .expire(tokenIdKey, TTL)
+                            .expire(idTokenKey, TTL);
+
+                        multi.exec(callback);
+                    },
                 ], function done(error, results) {
-                    if(results.length > 2) {
-                        callback(error, results[2]);
-                    } else {
-                        callback(error, null);
-                    }
+                    callback(error, results);
                 });
             }
         }
     ], function done(error, results) {
-        callback(error, results);
+        callback(error, {_id: input._id, createdAt: userinfo.createdAt, updatedAt: userinfo.updatedAt, sessionToken: input.sessionToken});
     });
 };
 
 exports.login = function(input, callback) {
     var applicationId = input.applicationId;
-    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
     var deviceToken = input.deviceToken;
 
-    async.waterfall([
-        function getUserInfo(callback) {
-            store.get('mongodb').find( userCollectionKey, input.userinfo, function(error, results) {
-                if( results.length < 1 ) { return callback (errorCode.USERNAME_MISSING, results) }
-                callback (error, results[0]);
+    var userinfo = input.userinfo;
+
+    var usernameKey = keys.usernameKey(applicationId);
+    var userMetaData = [ userinfo.username +'.password', userinfo.username+'._id' ];
+
+    async.series([
+        function findUser(callback) {
+            store.get('public').hmget(usernameKey, userMetaData, function(error, metaData) {
+                if( metaData[0] === null ) { return callback(errorCode.USERNAME_MISSING, metaData); }
+                if( passwordHash.verify(userinfo.password, metaData[0]) === false ) { return callback(errorCode.PASSWORD_MISSING, metaData); }
+
+                input.password = metaData[0];
+                input._id = metaData[1];
+                input.shardKey = _getShardKey(input._id);
+
+                callback(error, metaData);
             });
         },
-        function updateInstallationUserId(userInfo, callback) {
-            if( deviceToken ) {
-                var installationCollection = keys.collectionKey(InstallationClass, applicationId);
-                var installationHash = keys.installationKey(applicationId);
+        function createSessionToken(callback) {
+            var token = input.shardKey+''+uuid();
 
-                async.series([
-                    function updateMongo(callback) {
-                        store.get('mongodb').update(installationCollection, {deviceToken: deviceToken}, {$set: {userId: userInfo._id}},{}, callback);
-                    },
-                    function updateRedis(callback) {
-                        store.get('service').hget(installationHash, deviceToken, function (error, deviceId) {
-                            // TODO deviceToken error handling
-                            var installationKey = keys.entityDetail(InstallationClass, deviceId, applicationId);
-                            store.get('service').hset(installationKey, 'userId', userInfo._id, callback);
-                        });
-                    }
-                ], function done(error, results) {
-                    callback(error, userInfo);
-                });
-            }
-            else {
-                callback(null, userInfo);
-            }
+            input.sessionToken =  token;
+
+            callback(null, token);
         },
-        function registSessionToken(userInfo, callback){
-            var token = uuid();
+        function updateRedisSerivce(callback) {
+            var multi = store.get('service').multi(input.shardKey);
 
-            var tokenIdKey = keys.tokenIdKey(input.applicationId, token);
-            var idTokenKey = keys.idTokenKey(input.applicationId, userInfo._id);
+            var tokenIdKey = keys.tokenIdKey(applicationId, input.sessionToken);
+            var idTokenKey = keys.idTokenKey(applicationId, input._id);
 
-            store.get('public').multi()
-                .sadd(idTokenKey, token)
-                .hmset(tokenIdKey, userInfo)
-                .smembers(idTokenKey)
+            // sessionToken
+            multi.sadd(idTokenKey, input.sessionToken)
+                .set(tokenIdKey, input._id)
                 .expire(tokenIdKey, TTL)
-                .expire(idTokenKey, TTL)
-                .exec(function(error, results) {
-                    callback(error, {sessionToken: token, _id: userInfo._id} );
-                });
+                .expire(idTokenKey, TTL);
+
+            multi.exec(callback);
+        },
+        function relationInstallation(callback) {
+            if( input.deviceToken ) {
+                _relationInstallation({timestamp: input.timestamp, applicationId: input.applicationId, deviceToken:input.deviceToken, userId: input._id}, callback);
+            } else {
+                callback(null, null);
+            }
         }
-    ], function done(error, result) {
-        callback(error, result);
+    ], function done(error, results) {
+        callback(error, {sessionToken: input.sessionToken, _id: input._id});
     });
 };
 
@@ -290,64 +276,81 @@ exports.validSessionToken = function(input, callback) {
     var userCollectionKey = keys.collectionKey(UsersClass, input.applicationId);
     var tokenIdKey = keys.tokenIdKey(input.applicationId, input.sessionToken);
 
-    async.waterfall([
-        function isValidSessionToken(callback){
-            store.get('public').hget( tokenIdKey, '_id', function(error, result) {
-                if( result == null ) return callback(errorCode.INVALID_USER_TOKEN, result);
+    input.shardKey = _getShardKey(input.sessionToken);
 
-                var idTokenKey = keys.idTokenKey(input.applicationId, result);
-                store.get('public').multi()
-                            .expire(tokenIdKey, TTL)
-                            .expire(idTokenKey, TTL)
-                            .exec();
+    async.series([
+        function validSessionToken(callback) {
+            store.get('service').get(tokenIdKey, function(error, userId) {
+                if( error ) { return callback(error, userId); }
+                if( userId === null) { return callback(errorCode.INVALID_USER_TOKEN, userId); }
 
-                callback(error, result);
-            });
+                input._id = userId;
+
+                callback(error, userId);
+
+            }, input.shardKey);
         },
-        function getUserInfo(_id, callback){
-            store.get('mongodb').findOne(userCollectionKey, {_id: _id}, function(error, result) {
-                callback(error, result);
-            });
+        function getUserInfo(callback) {
+            var userHasMapKey = keys.entityDetail(UsersClass, input._id, input.applicationId);
+            var idTokenKey = keys.idTokenKey(input.applicationId, input._id);
+
+            var multi = store.get('service').multi(input.shardKey);
+
+            multi.hgetall(userHasMapKey)
+                .expire(tokenIdKey, TTL)
+                .expire(idTokenKey, TTL)
+                .exec(function(error, results) {
+                    input.userinfo = results[0];
+
+                    callback(error, results);
+                });
         }
-    ], function done(error, result) {
-        callback(error, result);
+    ], function done(error, results) {
+        callback(error, input.userinfo);
     });
 };
 
 exports.logout = function(input, callback) {
     var applicationId = input.applicationId;
+    var shardKey = _getShardKey(input.sessionToken);
+
     async.waterfall([
-        function selectId(callback) {
-            store.get('public').hget(keys.tokenIdKey(applicationId, input.sessionToken), '_id', function (error, id) {
-                if( id < 1 ) { callback(errorCode.INVALID_LINKED_SESSION, id); } // session check
+        function findId(callback) {
+            store.get('service').get(keys.tokenIdKey(applicationId, input.sessionToken), function (error, id) {
+                if( error ) { return callback(error, id); }
+                if( id === null ) { return callback(errorCode.INVALID_LINKED_SESSION, id); }
 
-                callback(error, id)
-            });
-        },
-        function selectTokens(id, callback) {
-            var type = input.type;
+                input._id = id;
 
-            if(type === 'me') {
-                callback(null, id, [input.sessionToken]);
-            } else if(type === 'other') {
-                store.get('public').smembers(keys.idTokenKey(applicationId, id), function (error, results) {
-                    callback(error, id, _.without(results, input.sessionToken));
-                });
-            } else if(type === 'all') {
-                store.get('public').smembers(keys.idTokenKey(applicationId, id), function(error, results) {
-                    callback(error, id, results)
-                });
-            }else {
-                return callback(null, null, []);
-            }
+                callback(error);
+            }, shardKey);
         },
-        function expireTokens(id, tokens, callback) {
-            var multi = store.get('public').multi();
+        function selectTokens(callback) {
+                if(input.type === 'me') {
+                    callback(null, [input.sessionToken]);
+                } else if(input.type === 'other') {
+                    store.get('service').smembers(keys.idTokenKey(applicationId, input._id), function (error, results) {
+                        callback(error, _.without(results, input.sessionToken));
+                    }, shardKey);
+                } else if(input.type === 'all') {
+                    store.get('service').smembers(keys.idTokenKey(applicationId, input._id), function(error, results) {
+                        callback(error, results)
+                    }, shardKey);
+                }else {
+                    return callback(null, null, []);
+                }
+        },
+        function expireTokens(tokens, callback) {
+            if( tokens.length  === 0 ) { return callback(null, null); }
+
+
+            var multi = store.get('service').multi(shardKey);
 
             for( var i = 0; i < tokens.length; i++ ) {
                 multi.del( keys.tokenIdKey(applicationId, tokens[i]) );
             }
-            multi.srem(keys.idTokenKey(applicationId, id), tokens);
+
+            multi.srem(keys.idTokenKey(applicationId, input._id), tokens);
             multi.exec(callback);
         }
     ], function done(error, results) {
@@ -359,43 +362,49 @@ exports.update = function(input, callback) {
     var applicationId = input.applicationId;
     var _id = input._id;
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+    var shardKey = _getShardKey(_id);
 
     async.series([
-        function updateMongo(callback) {
-            store.get('mongodb').update(userCollectionKey, {_id: _id}, {$set: input.userinfo},{}, function(error, results) {
-                if( input.userinfo.authData ) {
-                    input.userinfo.authData = JSON.stringify(input.userinfo.authData);
-                }
-                callback(error, results);
-            });
+        function isExists(callback) {
+            var userHasMapKey = keys.entityDetail(UsersClass, input._id, applicationId);
+
+            store.get('service').hgetall(userHasMapKey, function(error, userinfo){
+                if( userinfo === null) { return callback(errorCode.MISSING_ENTITY_ID, userinfo); }
+
+                callback(error, userinfo);
+            }, shardKey);
         },
-        function updateRedis(callback) {
+        function updateMongo(callback) {
+            store.get('mongodb').update(userCollectionKey, {_id: _id}, {$set: input.userinfo},{}, callback);
+        },
+        function updateRedisService(callback) {
             var userHasMapKey = keys.entityDetail(UsersClass, _id, applicationId);
+
+            if( input.userinfo.authData ) {
+                input.userinfo.authData = JSON.stringify(input.userinfo.authData);
+            }
+
+            store.get('service').hmset(userHasMapKey, input.userinfo, callback, shardKey);
+        },
+        function updateRedisPublic(callback) {
             var keyset = keys.entityKey(UsersClass, applicationId);
 
-            store.get('service').multi()
-                .hmset(userHasMapKey, input.userinfo)
-                .zadd(keyset, input.timestamp, _id)
-                .exec(function(error, replies) {
-                    callback(error, replies);
-                });
+            store.get('public').zadd(keyset, input.timestamp, _id, callback);
         }
     ], function done(error, results) {
         callback(error, results);
     });
 };
 
-
 exports.retrieve = function(input, callback) {
-    var applicationId = input.applicationId;
-    var _id = input.userinfo._id;
-    var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
+    var userHasMapKey = keys.entityDetail(UsersClass, input.userinfo._id, input.applicationId);
+    var shardKey = _getShardKey(input.userinfo._id);
+    store.get('service').hgetall(userHasMapKey, function(error, userinfo) {
+        if(error) { return callback(error, userinfo); }
+        if(userinfo === null) { return callback(errorCode.MISSING_ENTITY_ID, userinfo); }
 
-    store.get('mongodb').find( userCollectionKey, {_id: input.userinfo._id}, function(error, results) {
-        if( results.length < 1 ) { return callback (errorCode.MISSING_ENTITY_ID, results) }
-
-        callback (error, results);
-    });
+        callback(error, userinfo);
+    }, shardKey);
 };
 
 exports.delete = function(input, callback) {
@@ -403,46 +412,67 @@ exports.delete = function(input, callback) {
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
     var _id = input.userinfo._id;
     var tokenIdKey = keys.tokenIdKey(input.applicationId, input.sessionToken);
+    var shardKey = _getShardKey(_id);
+    
+    async.series([
+        function isValidIdSessionToken(callback) {
+            store.get('service').get(tokenIdKey, function(error, id){
+                if( error ) { return callback(error, id); }
+                if( id === null ) { return callback(errorCode.SESSION_MISSING, id); }
+                if( id !== _id ) { return callback(errorCode.MISSING_ENTITY_ID, id); }
 
-    async.waterfall([
-        function isValidSessionToken(callback){
-            store.get('public').hget( tokenIdKey, '_id', function(error, result) {
-                if( result == null ) return callback(errorCode.SESSION_MISSING, result);
-                callback(error, result);
-            });
+                callback(error, id);
+            }, shardKey);
         },
-        function selectTokens(e, callback) {
-            store.get('public').smembers(keys.idTokenKey(applicationId, _id), function(error, results) {
-                callback(error, _id, results)
-            });
-        },
-        function expireTokens(id, tokens, callback) {
-            if( tokens.length > 0 ) {
-                var multi = store.get('public').multi();
+        function findUser(callback) {
+            var userHasMapKey = keys.entityDetail(UsersClass, input.userinfo._id, input.applicationId);
+            store.get('service').hgetall(userHasMapKey, function(error, userinfo) {
+                if(error) { return callback(error, userinfo); }
+                if(userinfo === null) { return callback(errorCode.MISSING_ENTITY_ID, userinfo); }
 
-                for( var i = 0; i < tokens.length; i++ ) {
-                    multi.del( keys.tokenIdKey(applicationId, tokens[i]) );
-                }
+                input.userinfo = userinfo;
 
-                multi.del(keys.idTokenKey(applicationId, id));
-                multi.exec(callback);
-            } else {
-                callback(null, null);
-            }
+                callback(error, userinfo);
+            }, shardKey);
         },
-        function deleteMongoDb(r, callback) {
-            store.get('mongodb').remove(userCollectionKey, {_id: _id}, callback);
+        function selectTokens(callback) {
+            store.get('service').smembers(keys.idTokenKey(applicationId, _id), function(error, results) {
+
+                input.sessionTokens = results;
+
+                callback(error, results)
+            }, shardKey);
         },
-        function deleteRedis(e, r, callback) {
-            var userHasMapKey = keys.entityDetail(UsersClass, _id, applicationId);
+        function deleteRedisPublic(callback) {
+            var multi = store.get('public').multi();
+
             var keyset = keys.entityKey(UsersClass, applicationId);
+            var usernameKey = keys.usernameKey(applicationId);
 
-            store.get('service').multi()
-                .del(userHasMapKey)
-                .zrem(keyset, _id)
-                .exec(function(error, replies) {
-                    callback(error, replies);
-                });
+            // userinfo
+            multi.zrem(keyset, input._id)
+                .hdel(usernameKey, input.userinfo.username+'._id')
+                .hdel(usernameKey, input.userinfo.username+'.password')
+                .exec(callback);
+
+        },
+        function deleteRedisService(callback) {
+            var multi = store.get('service').multi(shardKey);
+            var userHasMapKey = keys.entityDetail(UsersClass, _id, applicationId);
+
+            // userinfo
+            multi.del(userHasMapKey);
+
+            // sessionToken
+            for(var i = 0; i < input.sessionTokens.length; i++ ) {
+                multi.del( keys.tokenIdKey(applicationId, input.sessionTokens[i]) );
+            }
+            multi.del(keys.idTokenKey(applicationId, input._id));
+
+            multi.exec(callback);
+        },
+        function deleteMongodb(callback){
+            store.get('mongodb').remove(userCollectionKey, {_id: _id}, callback);
         }
     ], function done(error, results) {
         callback(error, results);
@@ -463,4 +493,55 @@ function _createCondition(authData) {
     }
 
     return condition;
+};
+
+function _serializeAuthData(authData) {
+
+    var authType = Object.keys(authData)[0];
+
+    return authType + '.id:' + authData[authType].id;
+};
+
+/**
+ * input = { applicationId, deviceToken, userId };
+ * **/
+function _relationInstallation(input, callback) {
+    var installationCollectionKey = keys.collectionKey(InstallationClass, input.applicationId);
+
+    async.series([
+        function findInstallation(callback) {
+            store.get('mongodb').find(installationCollectionKey, {deviceToken: input.deviceToken}, function(error, results) {
+                if( results === null ) { return callback(errorCode.INVALID_DEVICE_TOKEN, results); }
+                if( results.length < 1 ) { return callback(errorCode.INVALID_DEVICE_TOKEN, results); }
+
+                input.installation = results[0];
+                input.shardKey = "0"//_getShardKey(results[0]._id); TODO Installations _id
+
+                callback(error, results);
+            });
+        },
+        function updateMongodb(callback) {
+            store.get('mongodb').update(installationCollectionKey, {_id: input.installation._id}, {$set: {userId: input.userId}},{}, function(error, results) {
+                if(error && error.message == 'Invalid condition') { return callback(errorCode.INVALID_DEVICE_TOKEN, results); }
+
+                callback(error, results);
+            });
+        },
+        function updateRedisService(callback) {
+            var redisKey = keys.entityDetail(InstallationClass, input.installation._id, input.applicationId);
+
+            store.get('service').hset(redisKey, 'userId', input.userId, callback, input.shardKey );
+        },
+        function updateRedisPublic(callback) {
+            var keyset = keys.entityKey(InstallationClass, input.applicationId);
+
+            store.get('public').zadd(keyset, input.timestamp, input.installation._id, callback);
+        },
+    ], function done(error, results) {
+        callback(error, results);
+    });
+};
+
+function _registSessionToken(input, callback) {
+
 };

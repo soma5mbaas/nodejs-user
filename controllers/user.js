@@ -42,7 +42,7 @@ exports.login = function(req, res) {
 
     input.userinfo = {
         username: req.query.username,
-        password: req.query.password
+        password: req.query.password,
     };
 
     input.deviceToken = req.query.deviceToken;
