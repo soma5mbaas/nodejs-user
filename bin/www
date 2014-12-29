@@ -55,8 +55,9 @@ function _getConfig() {
 	var config = globalConfig[globalConfig.namespace];
 
 	config.port = globalConfig[appName].port;
-	config.namespace = globalConfig.namespace
+	config.namespace = globalConfig.namespace;
 	config.sessionToken = globalConfig.sessionToken;
+	config.query = globalConfig.query;
 
 	return config;
 };
