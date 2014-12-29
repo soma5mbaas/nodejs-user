@@ -15,7 +15,7 @@ var store = require('haru-nodejs-store');
 var uuid = require('uuid');
 var uid2 = require('uid2');
 
-var TTL = require('../config').sessionToken.TTL;
+var TTL = config.sessionToken.TTL;
 
 var _createEntityId = require('haru-nodejs-util').common.createEntityId;
 var _getShardKey = require('haru-nodejs-util').common.getShardKey;

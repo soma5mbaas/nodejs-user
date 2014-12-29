@@ -11,7 +11,7 @@ var routeV1 = require('./routes/routeV1');
 var app = express();
 
 
-store.connect(require('./config').store);
+store.connect(config.store);
 
 
 app.use(bodyParser.json());
