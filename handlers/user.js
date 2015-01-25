@@ -412,12 +412,16 @@ exports.delete = function(input, callback) {
     var userCollectionKey = keys.collectionKey(UsersClass, applicationId);
     var _id = input.userinfo._id;
     var tokenIdKey = keys.tokenIdKey(input.applicationId, input.sessionToken);
+
     var shardKey = _getShardKey(_id);
     
     async.series([
         function isValidIdSessionToken(callback) {
             store.get('service').get(tokenIdKey, function(error, id){
                 if( error ) { return callback(error, id); }
+
+                console.log(tokenIdKey, id);
+                
                 if( id === null ) { return callback(errorCode.SESSION_MISSING, id); }
                 if( id !== _id ) { return callback(errorCode.MISSING_ENTITY_ID, id); }
 
