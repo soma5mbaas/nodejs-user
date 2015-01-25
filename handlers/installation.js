@@ -69,6 +69,9 @@ exports.updateInstallation = function(input, callback) {
         callback(error, input.installation);
     });
 };
+exports.delete = function(input, callback) {
+    return _deleteInstallation(input, callback);
+};
 
 //exports.deleteInstallation = function(input, callback) {
 //    var installationCollection = keys.collectionKey(InstallationClass, input.applicationId);
@@ -115,7 +118,33 @@ function _createInstallation(input, callback) {
     ], function done(error, results) {
         callback(error, installation);
     });
+};
 
+function _deleteInstallation(input, callback) {
+    var applicationId = input.applicationId;
+    var _id = input._id;
+    var shardKey = getShardKey(_id);
+
+    async.series([
+        function isExistEntity(callback) {
+            store.get('service').hget( keys.entityDetail(InstallationClass, input._id, applicationId), '_id', function(error, results) {
+                if(results == null) { return callback(errorCode.MISSING_ENTITY_ID, results); }
+
+                callback(error, results);
+            }, shardKey);
+        },
+        function deletePublicRedis(callback) {
+            store.get('public').zrem(keys.entityKey(InstallationClass, applicationId), _id);
+        },
+        function deleteServiceRedis(callback) {
+            store.get('service').hdel(keys.entityDetail(InstallationClass, _id, applicationId), shardKey);
+        },
+        function deleteMongodb(callback) {
+            store.get('mongodb').remove(keys.collectionKey(InstallationClass, applicationId), {_id: _id}, callback);
+        }
+    ], function done(error, results) {
+        callback(error, results);
+    });
 };
 
 function _updateInstallation(input, callback) {

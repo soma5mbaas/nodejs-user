@@ -44,5 +44,13 @@ exports.update = function(req, res) {
 
 // TODO master-key 만 가능하도록 수정
 exports.delete = function(req, res) {
-    res.json({success: false});
+    var input = getHeader(req);
+    input._id = req.params._id;
+
+    handler.delete(input, function(error, results) {
+        if(error) { return sendError(res, error); }
+        if(results === null) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+        res.json(results);
+    });
 };
