@@ -22,6 +22,7 @@ global.log  = new Logger( __dirname +'/../logs/debug.log', logConfig[config.name
 // // Exception
 process.on('uncaughtException', function(error) {
 	log.error('[%d] uncaughtException : ', process.pid, error.stack);
+	process.exit(1);
 });
 
 if( cluster.isMaster ) {
