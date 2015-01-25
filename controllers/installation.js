@@ -51,6 +51,6 @@ exports.delete = function(req, res) {
         if(error) { return sendError(res, error); }
         if(results === null) { return sendError(res, errorCode.OTHER_CAUSE); }
 
-        res.json(results);
+        res.json({success: true});
     });
 };
