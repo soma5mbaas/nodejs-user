@@ -419,9 +419,6 @@ exports.delete = function(input, callback) {
         function isValidIdSessionToken(callback) {
             store.get('service').get(tokenIdKey, function(error, id){
                 if( error ) { return callback(error, id); }
-
-                console.log(tokenIdKey, id);
-                
                 if( id === null ) { return callback(errorCode.SESSION_MISSING, id); }
                 if( id !== _id ) { return callback(errorCode.MISSING_ENTITY_ID, id); }
 
