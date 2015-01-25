@@ -137,7 +137,7 @@ function _deleteInstallation(input, callback) {
             store.get('public').zrem(keys.entityKey(InstallationClass, applicationId), _id, callback);
         },
         function deleteServiceRedis(callback) {
-            store.get('service').hdel(keys.entityDetail(InstallationClass, _id, applicationId), callback, shardKey);
+            store.get('service').del(keys.entityDetail(InstallationClass, _id, applicationId), callback, shardKey);
         },
         function deleteMongodb(callback) {
             store.get('mongodb').remove(keys.collectionKey(InstallationClass, applicationId), {_id: _id}, callback);
