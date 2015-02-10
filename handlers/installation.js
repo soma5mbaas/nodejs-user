@@ -41,42 +41,13 @@ exports.createInstallation = function(input, callback) {
 };
 
 exports.updateInstallation = function(input, callback) {
-    var installationCollection = keys.collectionKey(InstallationClass, input.applicationId);
-
-    async.series([
-        function findInstallation(callback) {
-            store.get('mongodb').find(installationCollection, {deviceToken: input.installation.deviceToken}, function(error, results) {
-                if( error ) { return callback(error, results); }
-
-                input.isNewInstallation = (results.length === 0);
-
-                if( results.length > 0 ) {
-                    input._id = input.installation._id = results[0]._id;
-                    input.installation.createdAt = results[0].createdAt;
-                }
-
-                callback(error, results);
-            });
-        },
-        function upsertInstallaion(callback) {
-            if( input.isNewInstallation ) {
-                _createInstallation(input, callback);
-            } else {
-                _updateInstallation(input, callback);
-            }
-        }
-    ], function done(error, results) {
-        callback(error, input.installation);
+    _updateInstallation(input, function(err, result) {
+        callback(err, input.installation);
     });
 };
 exports.delete = function(input, callback) {
     return _deleteInstallation(input, callback);
 };
-
-//exports.deleteInstallation = function(input, callback) {
-//    var installationCollection = keys.collectionKey(InstallationClass, input.applicationId);
-//    var installationKey = keys.entityDetail(InstallationClass, input._id, input.applicationId);
-//};
 
 function _createInstallation(input, callback) {
     var applicationId = input.applicationId;
