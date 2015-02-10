@@ -1,5 +1,7 @@
 var async = require('async');
 var uuid = require('uuid');
+var _ = require('underscore');
+
 
 var store = require('haru-nodejs-store');
 
@@ -143,5 +145,86 @@ function _updateInstallation(input, callback) {
         }
     ], function done(error, results) {
         callback(error, results);
+    });
+};
+
+exports.createChannel = function(input, callback) {
+    var applicationId = input.applicationId;
+    var installation = input.installation;
+    var channels = installation.channels;
+
+    var shardKey = getShardKey(input._id);
+
+    async.series([
+        function isExistEntity(callback) {
+            store.get('service').hgetall( keys.entityDetail(InstallationClass, input._id, applicationId), function(error, json) {
+                if( json == null ) { return callback(errorCode.MISSING_ENTITY_ID, json); }
+
+                if( json.channels && json.channels.length > 0 ) {
+                    input.channels = json.channels.split(',');
+                } else {
+                    input.channels = [];
+                }
+
+                callback(error, json);
+            }, shardKey);
+        },
+        function updateEntityToMongoDB(callback){
+            store.get('mongodb').update(
+                keys.collectionKey(InstallationClass, applicationId),
+                {_id: input._id},
+                {$addToSet: {channels: {$each: channels}}, $set: {updatedAt: input.installation.updatedAt }},
+                callback);
+        },
+        function updateEntityToRedis(callback){
+            input.channels = _.union(input.channels, channels);
+            store.get('service').hset(keys.entityDetail(InstallationClass, input._id, applicationId), 'channels', input.channels, callback, shardKey);
+        },
+        function updateEntityIdToPublic(callback) {
+            store.get('public').zadd(keys.entityKey(InstallationClass, applicationId), input.timestamp, input._id, callback);
+        }
+    ], function done(error, results) {
+        callback(error, input);
+    });
+};
+
+exports.deleteChannel = function(input, callback) {
+    var applicationId = input.applicationId;
+    var installation = input.installation;
+    var channels = installation.channels;
+
+    var shardKey = getShardKey(input._id);
+
+    async.series([
+        function isExistEntity(callback) {
+            store.get('service').hgetall( keys.entityDetail(InstallationClass, input._id, applicationId), function(error, json) {
+                if( json == null ) { return callback(errorCode.MISSING_ENTITY_ID, json); }
+                if( error ) { return callback(error); }
+
+                if( json.channels && json.channels.length > 0 ) {
+                    input.channels = json.channels.split(',');
+                } else {
+                    input.channels = [];
+                }
+
+                callback(error, json);
+            }, shardKey);
+        },
+        function updateEntityToMongoDB(callback){
+            store.get('mongodb').update(
+                keys.collectionKey(InstallationClass, applicationId),
+                {_id: input._id},
+                {$pull: {channels:  {$in: channels}, $set: {updatedAt: input.installation.updatedAt }} },
+                callback);
+        },
+        function updateEntityToRedis(callback){
+            input.channels = _.difference(input.channels, channels);
+            store.get('service').hset(keys.entityDetail(InstallationClass, input._id, applicationId), 'channels', input.channels, callback, shardKey);
+        },
+        function updateEntityIdToPublic(callback) {
+            store.get('public').zadd(keys.entityKey(InstallationClass, applicationId), input.timestamp, input._id, callback);
+        }
+    ], function done(error, results) {
+        callback(error, input);
     });
 };
