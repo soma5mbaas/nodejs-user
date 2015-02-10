@@ -32,11 +32,11 @@ exports.update = function(req, res) {
     input.installation = req.body;
     input.installation.updatedAt = input.timestamp;
 
-    handler.createInstallation(input, function(error, installation) {
+    handler.updateInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
         if(installation === null) { return sendError(res, errorCode.OTHER_CAUSE); }
 
-        schema.createInstallationSchema(input.applicationId, installation);
+        schema.updateInstallationSchema(input.applicationId, installation);
 
         res.json(installation);
     });
@@ -54,3 +54,38 @@ exports.delete = function(req, res) {
         res.json({success: true});
     });
 };
+
+
+exports.createChannel = function(req, res) {
+    var input = getHeader(req);
+    input._id = req.params._id;
+    input.installation = req.body;
+
+    if( !input.installation.channels ) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+    input.installation.updatedAt = input.timestamp;
+    handler.createChannel(input, function(error, results) {
+        if(error) { return sendError(res, error); }
+        if(results === null) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+        res.json({channels: results.channels, updatedAt: results.installation.updatedAt});
+    });
+
+};
+exports.deleteChannel = function(req, res) {
+    var input = getHeader(req);
+    input._id = req.params._id;
+    input.installation = req.body;
+
+    if( !input.installation.channels ) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+    input.installation.updatedAt = input.timestamp;
+    handler.deleteChannel(input, function(error, results) {
+        if(error) { return sendError(res, error); }
+        if(results === null) { return sendError(res, errorCode.OTHER_CAUSE); }
+
+        res.json({channels: results.channels, updatedAt: results.installation.updatedAt});
+    });
+};
+
+
