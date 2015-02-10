@@ -14,6 +14,8 @@ exports.create = function (req, res) {
     input.installation = req.body;
     input.installation.createdAt = input.installation.updatedAt = input.timestamp;
 
+    if( !input.installation.deviceToken ) { return sendError(res, errorCode.INVALID_DEVICE_TOKEN) }
+
     handler.createInstallation(input, function(error, installation) {
         if(error) { return sendError(res, error); }
         if(installation === null) { return sendError(res, errorCode.OTHER_CAUSE); }
