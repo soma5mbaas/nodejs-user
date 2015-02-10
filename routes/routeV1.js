@@ -20,6 +20,9 @@ router.post('/installations', installation.create);
 router.put('/installations/:_id', installation.update);
 router.delete('/installations/:_id', installation.delete);
 
+router.delete('/installations/:_id/channels', installation.deleteChannel);
+router.post('/installations/:_id/channels', installation.createChannel);
+
 module.exports = router;
 
 
